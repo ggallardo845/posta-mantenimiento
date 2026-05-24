@@ -26,6 +26,12 @@ async function uploadFoto(file, taskId) {
   return `${SUPABASE_URL}/storage/v1/object/public/fotos/${path}`;
 }
 
+function formatDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+}
+
 const TEAM = [
   { id: "daniel", name: "Daniel", role: "supervisor", color: "#C8963E", initials: "DA" },
   { id: "alexis", name: "Alexis", role: "mantenimiento", color: "#4A90A4", initials: "AL" },
@@ -38,8 +44,8 @@ const PRIORITY_CONFIG = { alta: { label: "Alta", color: "#E05555", bg: "#FFF0F0"
 const STATUS_CONFIG = { pendiente: { label: "Pendiente", icon: "○", color: "#888" }, "en-proceso": { label: "En proceso", icon: "◐", color: "#C8963E" }, completada: { label: "Completada", icon: "●", color: "#7B9E5E" }, "no-realizada": { label: "No realizada", icon: "✕", color: "#E05555" } };
 
 function getMember(id) { return TEAM.find(m => m.id === id); }
-function dbToTask(r) { return { id: r.id, title: r.title, sector: r.sector, location: r.location, assignedTo: r.assigned_to, priority: r.priority, status: r.status, week: r.week, notes: r.notes || "", photo: r.photo, rejectionReason: r.rejection_reason, createdAt: r.created_at }; }
-function taskToDb(t) { return { title: t.title, sector: t.sector, location: t.location, assigned_to: t.assignedTo, priority: t.priority, status: t.status, week: t.week, notes: t.notes, photo: t.photo, rejection_reason: t.rejectionReason, created_at: t.createdAt }; }
+function dbToTask(r) { return { id: r.id, title: r.title, sector: r.sector, location: r.location, assignedTo: r.assigned_to, priority: r.priority, status: r.status, week: r.week, notes: r.notes || "", photo: r.photo, rejectionReason: r.rejection_reason, createdAt: r.created_at, startedAt: r.started_at, finishedAt: r.finished_at }; }
+function taskToDb(t) { return { title: t.title, sector: t.sector, location: t.location, assigned_to: t.assignedTo, priority: t.priority, status: t.status, week: t.week, notes: t.notes, photo: t.photo, rejection_reason: t.rejectionReason, created_at: t.createdAt, started_at: t.startedAt, finished_at: t.finishedAt }; }
 
 function Avatar({ memberId, size = 36 }) {
   const m = getMember(memberId);
@@ -70,6 +76,10 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
     setFotoPreview(URL.createObjectURL(file));
   }
 
+  function handleStatusChange(s) {
+    setStatus(s);
+  }
+
   async function handleSave() {
     if (status === "no-realizada" && !reason.trim()) { alert("Por favor indicá el motivo."); return; }
     if (status === "completada" && !fotoPreview) { alert("Por favor cargá una foto."); return; }
@@ -77,7 +87,21 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
     try {
       let photoUrl = task.photo;
       if (fotoFile) { photoUrl = await uploadFoto(fotoFile, task.id); }
-      const updated = { ...task, status, rejectionReason: reason, photo: photoUrl };
+      
+      const now = new Date().toISOString();
+      let startedAt = task.startedAt;
+      let finishedAt = task.finishedAt;
+      
+      if (status === "en-proceso" && !startedAt) startedAt = now;
+      if (status === "completada") {
+        if (!startedAt) startedAt = now;
+        finishedAt = now;
+      }
+      if (status === "no-realizada") {
+        finishedAt = now;
+      }
+
+      const updated = { ...task, status, rejectionReason: reason, photo: photoUrl, startedAt, finishedAt };
       await supabase("PATCH", `tasks?id=eq.${task.id}`, taskToDb(updated));
       onUpdate(updated); onClose();
     } catch(e) { alert("Error: " + e.message); } finally { setSaving(false); }
@@ -96,21 +120,45 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
           <Avatar memberId={task.assignedTo} size={32} />
           <div><div style={{ fontSize: 10, color: "#999" }}>Asignado a</div><div style={{ fontSize: 14, fontWeight: 600 }}>{member?.name}</div></div>
         </div>
+
+        {/* Tiempos */}
+        {(task.startedAt || task.finishedAt) && (
+          <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
+            {task.startedAt && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>🕐 Inicio: <strong>{formatDate(task.startedAt)}</strong></div>}
+            {task.finishedAt && <div style={{ fontSize: 12, color: "#666" }}>🏁 Fin: <strong>{formatDate(task.finishedAt)}</strong></div>}
+          </div>
+        )}
+
         {task.notes && <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16, fontSize: 13 }}>{task.notes}</div>}
+
         {canEdit && (
           <div style={{ borderTop: "1px solid #EEE8DC", paddingTop: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", marginBottom: 12 }}>Actualizar estado</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
               {["en-proceso","completada","no-realizada"].map(s => (
-                <button key={s} onClick={() => setStatus(s)} style={{ padding: "8px 14px", borderRadius: 20, border: "2px solid", borderColor: status===s ? STATUS_CONFIG[s].color : "#DDD", background: status===s ? STATUS_CONFIG[s].color+"18" : "#fff", color: status===s ? STATUS_CONFIG[s].color : "#888", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                <button key={s} onClick={() => handleStatusChange(s)} style={{ padding: "8px 14px", borderRadius: 20, border: "2px solid", borderColor: status===s ? STATUS_CONFIG[s].color : "#DDD", background: status===s ? STATUS_CONFIG[s].color+"18" : "#fff", color: status===s ? STATUS_CONFIG[s].color : "#888", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                   {STATUS_CONFIG[s].icon} {STATUS_CONFIG[s].label}
                 </button>
               ))}
             </div>
+
+            {/* Info de timestamps según estado seleccionado */}
+            {status === "en-proceso" && !task.startedAt && (
+              <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#C8963E" }}>
+                🕐 Al guardar se registrará la hora de inicio
+              </div>
+            )}
+            {status === "completada" && (
+              <div style={{ background: "#F0F7EC", border: "1px solid #C8E0B4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7B9E5E" }}>
+                🏁 Al guardar se registrará la hora de finalización
+              </div>
+            )}
+
             {status === "no-realizada" && <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>¿Por qué no se realizó? *</div>
               <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Falta material..." style={{ width: "100%", minHeight: 80, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", resize: "none", boxSizing: "border-box" }} />
             </div>}
+
             {status === "completada" && <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#7B9E5E", marginBottom: 6 }}>Foto comprobante *</div>
               <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
@@ -122,6 +170,7 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
                 : <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "14px", border: "2px dashed #CCC", borderRadius: 12, background: "#FAFAFA", color: "#AAA", fontSize: 14, cursor: "pointer" }}>📷 Tocar para sacar foto</button>
               }
             </div>}
+
             <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "14px", background: saving ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "default" : "pointer", marginTop: 8 }}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
@@ -143,7 +192,7 @@ function NewTaskModal({ onClose, onAdd }) {
     if (!form.title.trim()) { alert("Ingresá el título"); return; }
     setSaving(true);
     try {
-      const newTask = { ...form, status: "pendiente", week: "2025-W22", photo: null, rejectionReason: null, createdAt: new Date().toISOString().slice(0, 10) };
+      const newTask = { ...form, status: "pendiente", week: "2025-W22", photo: null, rejectionReason: null, createdAt: new Date().toISOString().slice(0, 10), startedAt: null, finishedAt: null };
       const result = await supabase("POST", "tasks", taskToDb(newTask));
       onAdd({ ...newTask, id: result[0].id }); onClose();
     } catch(e) { alert("Error: " + e.message); } finally { setSaving(false); }
@@ -213,6 +262,12 @@ function SupervisorView({ tasks, onTaskUpdate, onNewTask }) {
                     <span style={{ fontSize: 12, color: "#666" }}>{member?.name}</span>
                     <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
                   </div>
+                  {(task.startedAt || task.finishedAt) && (
+                    <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
+                      {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
+                      {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
+                    </div>
+                  )}
                 </div>
                 {task.photo && <img src={task.photo} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
               </div>
@@ -245,6 +300,12 @@ function WorkerView({ tasks, memberId, onTaskUpdate }) {
           <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
           {task.photo && <img src={task.photo} alt="" style={{ width: 24, height: 24, borderRadius: 4, objectFit: "cover" }} />}
         </div>
+        {(task.startedAt || task.finishedAt) && (
+          <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
+            {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
+            {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
+          </div>
+        )}
       </div>
     );
   }
