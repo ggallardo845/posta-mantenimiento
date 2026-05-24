@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const SUPABASE_URL = "https://qfeikwswsuenujnpbjka.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmZWlrd3N3c3VlbnVqbnBiamthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1ODIwNTMsImV4cCI6MjA5NTE1ODA1M30.D95gYEusRKnCkvi3ntZ30ltE625ue_sr1KGuR_szfXg";
@@ -12,6 +12,18 @@ async function supabase(method, path, body) {
   if (!res.ok && res.status !== 204) { const err = await res.text(); throw new Error(err); }
   if (res.status === 204) return null;
   return res.json();
+}
+
+async function uploadFoto(file, taskId) {
+  const ext = file.name.split(".").pop();
+  const path = `task-${taskId}-${Date.now()}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/fotos/${path}`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type },
+    body: file,
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(err); }
+  return `${SUPABASE_URL}/storage/v1/object/public/fotos/${path}`;
 }
 
 const TEAM = [
@@ -44,17 +56,28 @@ function Badge({ type, value }) {
 function TaskModal({ task, onClose, onUpdate, currentUser }) {
   const [status, setStatus] = useState(task.status);
   const [reason, setReason] = useState(task.rejectionReason || "");
-  const [photoAdded, setPhotoAdded] = useState(!!task.photo);
+  const [fotoFile, setFotoFile] = useState(null);
+  const [fotoPreview, setFotoPreview] = useState(task.photo || null);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef();
   const canEdit = currentUser === task.assignedTo || currentUser === "daniel";
   const member = getMember(task.assignedTo);
 
+  function handleFotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFotoFile(file);
+    setFotoPreview(URL.createObjectURL(file));
+  }
+
   async function handleSave() {
     if (status === "no-realizada" && !reason.trim()) { alert("Por favor indicá el motivo."); return; }
-    if (status === "completada" && !photoAdded) { alert("Por favor cargá una foto."); return; }
+    if (status === "completada" && !fotoPreview) { alert("Por favor cargá una foto."); return; }
     setSaving(true);
     try {
-      const updated = { ...task, status, rejectionReason: reason, photo: photoAdded ? "📷" : null };
+      let photoUrl = task.photo;
+      if (fotoFile) { photoUrl = await uploadFoto(fotoFile, task.id); }
+      const updated = { ...task, status, rejectionReason: reason, photo: photoUrl };
       await supabase("PATCH", `tasks?id=eq.${task.id}`, taskToDb(updated));
       onUpdate(updated); onClose();
     } catch(e) { alert("Error: " + e.message); } finally { setSaving(false); }
@@ -90,15 +113,21 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
             </div>}
             {status === "completada" && <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#7B9E5E", marginBottom: 6 }}>Foto comprobante *</div>
-              <button onClick={() => setPhotoAdded(!photoAdded)} style={{ width: "100%", padding: "14px", border: "2px dashed", borderColor: photoAdded ? "#7B9E5E" : "#CCC", borderRadius: 12, background: photoAdded ? "#F0F7EC" : "#FAFAFA", color: photoAdded ? "#7B9E5E" : "#AAA", fontSize: 14, cursor: "pointer" }}>
-                {photoAdded ? "✓ Foto cargada" : "📷 Toca para subir foto"}
-              </button>
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
+              {fotoPreview
+                ? <div style={{ position: "relative" }}>
+                    <img src={fotoPreview} alt="foto" style={{ width: "100%", borderRadius: 12, maxHeight: 200, objectFit: "cover" }} />
+                    <button onClick={() => fileRef.current.click()} style={{ position: "absolute", bottom: 8, right: 8, background: "#1A1208", color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>Cambiar</button>
+                  </div>
+                : <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "14px", border: "2px dashed #CCC", borderRadius: 12, background: "#FAFAFA", color: "#AAA", fontSize: 14, cursor: "pointer" }}>📷 Tocar para sacar foto</button>
+              }
             </div>}
-            <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "14px", background: saving ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
+            <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "14px", background: saving ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "default" : "pointer", marginTop: 8 }}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
         )}
+        {!canEdit && task.photo && <img src={task.photo} alt="comprobante" style={{ width: "100%", borderRadius: 12, marginBottom: 12 }} />}
         {!canEdit && task.rejectionReason && <div style={{ background: "#FFF0F0", border: "1px solid #FFCCCC", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#C0392B" }}><strong>Motivo:</strong> {task.rejectionReason}</div>}
       </div>
     </div>
@@ -185,7 +214,7 @@ function SupervisorView({ tasks, onTaskUpdate, onNewTask }) {
                     <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
                   </div>
                 </div>
-                {task.photo && <div style={{ fontSize: 20 }}>📷</div>}
+                {task.photo && <img src={task.photo} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
               </div>
               {task.rejectionReason && <div style={{ marginTop: 8, fontSize: 11, color: "#E05555", background: "#FFF0F0", borderRadius: 6, padding: "4px 8px" }}>⚠ {task.rejectionReason.slice(0,60)}...</div>}
             </div>
@@ -214,7 +243,7 @@ function WorkerView({ tasks, memberId, onTaskUpdate }) {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Badge type="priority" value={task.priority} />
           <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
-          {task.photo && <span>📷</span>}
+          {task.photo && <img src={task.photo} alt="" style={{ width: 24, height: 24, borderRadius: 4, objectFit: "cover" }} />}
         </div>
       </div>
     );
