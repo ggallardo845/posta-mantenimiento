@@ -59,14 +59,16 @@ function Badge({ type, value }) {
   return <span style={{ background: type === "priority" ? cfg.bg : "transparent", color: cfg.color, border: `1px solid ${cfg.color}30`, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>{cfg.label}</span>;
 }
 
-function TaskModal({ task, onClose, onUpdate, currentUser }) {
+function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
   const [status, setStatus] = useState(task.status);
   const [reason, setReason] = useState(task.rejectionReason || "");
   const [fotoFile, setFotoFile] = useState(null);
   const [fotoPreview, setFotoPreview] = useState(task.photo || null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef();
   const canEdit = currentUser === task.assignedTo || currentUser === "daniel";
+  const isSupervisor = currentUser === "daniel";
   const member = getMember(task.assignedTo);
 
   function handleFotoChange(e) {
@@ -76,10 +78,6 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
     setFotoPreview(URL.createObjectURL(file));
   }
 
-  function handleStatusChange(s) {
-    setStatus(s);
-  }
-
   async function handleSave() {
     if (status === "no-realizada" && !reason.trim()) { alert("Por favor indicá el motivo."); return; }
     if (status === "completada" && !fotoPreview) { alert("Por favor cargá una foto."); return; }
@@ -87,41 +85,50 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
     try {
       let photoUrl = task.photo;
       if (fotoFile) { photoUrl = await uploadFoto(fotoFile, task.id); }
-      
       const now = new Date().toISOString();
       let startedAt = task.startedAt;
       let finishedAt = task.finishedAt;
-      
       if (status === "en-proceso" && !startedAt) startedAt = now;
-      if (status === "completada") {
-        if (!startedAt) startedAt = now;
-        finishedAt = now;
-      }
-      if (status === "no-realizada") {
-        finishedAt = now;
-      }
-
+      if (status === "completada") { if (!startedAt) startedAt = now; finishedAt = now; }
+      if (status === "no-realizada") finishedAt = now;
       const updated = { ...task, status, rejectionReason: reason, photo: photoUrl, startedAt, finishedAt };
       await supabase("PATCH", `tasks?id=eq.${task.id}`, taskToDb(updated));
       onUpdate(updated); onClose();
     } catch(e) { alert("Error: " + e.message); } finally { setSaving(false); }
   }
 
+  async function handleDelete() {
+    if (!confirm(`¿Eliminar la tarea #${task.id} "${task.title}"?`)) return;
+    setDeleting(true);
+    try {
+      await supabase("DELETE", `tasks?id=eq.${task.id}`);
+      onDelete(task.id); onClose();
+    } catch(e) { alert("Error al eliminar: " + e.message); } finally { setDeleting(false); }
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,8,5,0.75)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }} onClick={onClose}>
       <div style={{ background: "#FDFAF5", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", padding: "28px 24px 40px" }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 40, height: 4, background: "#DDD", borderRadius: 2, margin: "0 auto 20px" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-          <div><div style={{ fontSize: 11, color: "#999", textTransform: "uppercase", marginBottom: 4 }}>{task.sector} · {task.location}</div><div style={{ fontSize: 20, fontWeight: 700 }}>{task.title}</div></div>
+
+        {/* Header con número */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div style={{ flex: 1, paddingRight: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase" }}>{task.sector} · {task.location}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 8px" }}>#{task.id}</span>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{task.title}</div>
+          </div>
           <button onClick={onClose} style={{ background: "#F0EDE8", border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, color: "#666" }}>✕</button>
         </div>
+
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}><Badge type="priority" value={task.priority} /><Badge type="status" value={status} /></div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "#F5F0E8", borderRadius: 12, marginBottom: 16 }}>
           <Avatar memberId={task.assignedTo} size={32} />
           <div><div style={{ fontSize: 10, color: "#999" }}>Asignado a</div><div style={{ fontSize: 14, fontWeight: 600 }}>{member?.name}</div></div>
         </div>
 
-        {/* Tiempos */}
         {(task.startedAt || task.finishedAt) && (
           <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
             {task.startedAt && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>🕐 Inicio: <strong>{formatDate(task.startedAt)}</strong></div>}
@@ -136,29 +143,17 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", marginBottom: 12 }}>Actualizar estado</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
               {["en-proceso","completada","no-realizada"].map(s => (
-                <button key={s} onClick={() => handleStatusChange(s)} style={{ padding: "8px 14px", borderRadius: 20, border: "2px solid", borderColor: status===s ? STATUS_CONFIG[s].color : "#DDD", background: status===s ? STATUS_CONFIG[s].color+"18" : "#fff", color: status===s ? STATUS_CONFIG[s].color : "#888", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                <button key={s} onClick={() => setStatus(s)} style={{ padding: "8px 14px", borderRadius: 20, border: "2px solid", borderColor: status===s ? STATUS_CONFIG[s].color : "#DDD", background: status===s ? STATUS_CONFIG[s].color+"18" : "#fff", color: status===s ? STATUS_CONFIG[s].color : "#888", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                   {STATUS_CONFIG[s].icon} {STATUS_CONFIG[s].label}
                 </button>
               ))}
             </div>
-
-            {/* Info de timestamps según estado seleccionado */}
-            {status === "en-proceso" && !task.startedAt && (
-              <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#C8963E" }}>
-                🕐 Al guardar se registrará la hora de inicio
-              </div>
-            )}
-            {status === "completada" && (
-              <div style={{ background: "#F0F7EC", border: "1px solid #C8E0B4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7B9E5E" }}>
-                🏁 Al guardar se registrará la hora de finalización
-              </div>
-            )}
-
+            {status === "en-proceso" && !task.startedAt && <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#C8963E" }}>🕐 Al guardar se registrará la hora de inicio</div>}
+            {status === "completada" && <div style={{ background: "#F0F7EC", border: "1px solid #C8E0B4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7B9E5E" }}>🏁 Al guardar se registrará la hora de finalización</div>}
             {status === "no-realizada" && <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>¿Por qué no se realizó? *</div>
               <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Falta material..." style={{ width: "100%", minHeight: 80, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", resize: "none", boxSizing: "border-box" }} />
             </div>}
-
             {status === "completada" && <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#7B9E5E", marginBottom: 6 }}>Foto comprobante *</div>
               <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
@@ -170,14 +165,21 @@ function TaskModal({ task, onClose, onUpdate, currentUser }) {
                 : <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "14px", border: "2px dashed #CCC", borderRadius: 12, background: "#FAFAFA", color: "#AAA", fontSize: 14, cursor: "pointer" }}>📷 Tocar para sacar foto</button>
               }
             </div>}
-
             <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "14px", background: saving ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "default" : "pointer", marginTop: 8 }}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
         )}
+
         {!canEdit && task.photo && <img src={task.photo} alt="comprobante" style={{ width: "100%", borderRadius: 12, marginBottom: 12 }} />}
         {!canEdit && task.rejectionReason && <div style={{ background: "#FFF0F0", border: "1px solid #FFCCCC", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#C0392B" }}><strong>Motivo:</strong> {task.rejectionReason}</div>}
+
+        {/* Botón eliminar — solo Daniel */}
+        {isSupervisor && (
+          <button onClick={handleDelete} disabled={deleting} style={{ width: "100%", padding: "12px", background: "transparent", color: "#E05555", border: "1.5px solid #E05555", borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: deleting ? "default" : "pointer", marginTop: 16 }}>
+            {deleting ? "Eliminando..." : `🗑 Eliminar tarea #${task.id}`}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -227,7 +229,7 @@ function NewTaskModal({ onClose, onAdd }) {
   );
 }
 
-function SupervisorView({ tasks, onTaskUpdate, onNewTask }) {
+function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
   const [filter, setFilter] = useState("all");
   const [selectedTask, setSelectedTask] = useState(null);
   const filtered = filter === "all" ? tasks : tasks.filter(t => t.assignedTo === filter || t.status === filter);
@@ -255,19 +257,20 @@ function SupervisorView({ tasks, onTaskUpdate, onNewTask }) {
             <div key={task.id} onClick={() => setSelectedTask(task)} style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", cursor: "pointer", borderLeft: `4px solid ${PRIORITY_CONFIG[task.priority]?.color||"#ccc"}` }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: "#AAA", marginBottom: 3 }}>{task.sector} · {task.location}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, color: "#AAA" }}>{task.sector} · {task.location}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 6px" }}>#{task.id}</span>
+                  </div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1208", marginBottom: 8 }}>{task.title}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Avatar memberId={task.assignedTo} size={22} />
                     <span style={{ fontSize: 12, color: "#666" }}>{member?.name}</span>
                     <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
                   </div>
-                  {(task.startedAt || task.finishedAt) && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
-                      {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
-                      {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
-                    </div>
-                  )}
+                  {(task.startedAt || task.finishedAt) && <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
+                    {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
+                    {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
+                  </div>}
                 </div>
                 {task.photo && <img src={task.photo} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
               </div>
@@ -277,7 +280,7 @@ function SupervisorView({ tasks, onTaskUpdate, onNewTask }) {
         })}
       </div>
       <button onClick={onNewTask} style={{ position: "fixed", bottom: 28, right: 24, width: 56, height: 56, borderRadius: "50%", background: "#C8963E", border: "none", color: "#fff", fontSize: 28, cursor: "pointer", boxShadow: "0 4px 16px rgba(200,150,62,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} currentUser="daniel" />}
+      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} onDelete={id => { onTaskDelete(id); setSelectedTask(null); }} currentUser="daniel" />}
     </div>
   );
 }
@@ -293,19 +296,20 @@ function WorkerView({ tasks, memberId, onTaskUpdate }) {
     const st = STATUS_CONFIG[task.status];
     return (
       <div onClick={() => setSelectedTask(task)} style={{ background: "#fff", borderRadius: 14, padding: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", cursor: "pointer", borderLeft: `4px solid ${PRIORITY_CONFIG[task.priority]?.color||"#ccc"}`, opacity: (task.status==="completada"||task.status==="no-realizada") ? 0.7 : 1 }}>
-        <div style={{ fontSize: 11, color: "#AAA", marginBottom: 3 }}>{task.sector} · {task.location}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+          <span style={{ fontSize: 11, color: "#AAA" }}>{task.sector} · {task.location}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 6px" }}>#{task.id}</span>
+        </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1208", marginBottom: 8 }}>{task.title}</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Badge type="priority" value={task.priority} />
           <span style={{ color: st?.color, fontSize: 12, fontWeight: 600 }}>{st?.icon} {st?.label}</span>
           {task.photo && <img src={task.photo} alt="" style={{ width: 24, height: 24, borderRadius: 4, objectFit: "cover" }} />}
         </div>
-        {(task.startedAt || task.finishedAt) && (
-          <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
-            {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
-            {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
-          </div>
-        )}
+        {(task.startedAt || task.finishedAt) && <div style={{ marginTop: 6, fontSize: 11, color: "#AAA" }}>
+          {task.startedAt && <span>🕐 {formatDate(task.startedAt)}</span>}
+          {task.finishedAt && <span style={{ marginLeft: 8 }}>🏁 {formatDate(task.finishedAt)}</span>}
+        </div>}
       </div>
     );
   }
@@ -326,7 +330,7 @@ function WorkerView({ tasks, memberId, onTaskUpdate }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{done.map(t => <TaskCard key={t.id} task={t} />)}</div>
       </div>}
       {myTasks.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: "#AAA" }}><div style={{ fontSize: 40 }}>✓</div><div style={{ marginTop: 8, fontWeight: 600 }}>Sin tareas asignadas</div></div>}
-      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} currentUser={memberId} />}
+      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} onDelete={() => {}} currentUser={memberId} />}
     </div>
   );
 }
@@ -346,6 +350,7 @@ export default function App() {
 
   function handleTaskUpdate(updated) { setTasks(ts => ts.map(t => t.id === updated.id ? updated : t)); }
   function handleNewTask(task) { setTasks(ts => [...ts, task]); }
+  function handleTaskDelete(id) { setTasks(ts => ts.filter(t => t.id !== id)); }
 
   if (!currentUser) {
     return (
@@ -383,7 +388,10 @@ export default function App() {
         </div>
       ) : (
         <div style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
-          {currentUser === "daniel" ? <SupervisorView tasks={tasks} onTaskUpdate={handleTaskUpdate} onNewTask={() => setShowNewTask(true)} /> : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} />}
+          {currentUser === "daniel"
+            ? <SupervisorView tasks={tasks} onTaskUpdate={handleTaskUpdate} onTaskDelete={handleTaskDelete} onNewTask={() => setShowNewTask(true)} />
+            : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} />
+          }
         </div>
       )}
       {showNewTask && <NewTaskModal onClose={() => setShowNewTask(false)} onAdd={handleNewTask} />}
