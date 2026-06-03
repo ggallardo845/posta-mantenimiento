@@ -70,7 +70,6 @@ function Badge({ type, value }) {
   return <span style={{ background: type === "priority" ? cfg.bg : "transparent", color: cfg.color, border: `1px solid ${cfg.color}30`, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>{cfg.label}</span>;
 }
 
-// ─── COMENTARIOS ──────────────────────────────────────────────────────────────
 function CommentsSection({ taskId, currentUser }) {
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
@@ -121,7 +120,6 @@ function CommentsSection({ taskId, currentUser }) {
   );
 }
 
-// ─── MODAL TAREA ──────────────────────────────────────────────────────────────
 function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
   const [status, setStatus] = useState(task.status);
   const [reason, setReason] = useState(task.rejectionReason || "");
@@ -190,7 +188,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,8,5,0.75)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }} onClick={onClose}>
       <div style={{ background: "#FDFAF5", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", padding: "28px 24px 40px" }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 40, height: 4, background: "#DDD", borderRadius: 2, margin: "0 auto 20px" }} />
-
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div style={{ flex: 1, paddingRight: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
@@ -212,7 +209,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
           </div>
         )}
 
-        {/* Panel asignación — solo Daniel cuando no tiene asignado */}
         {isSupervisor && !task.assignedTo && (
           <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#C8963E", marginBottom: 10 }}>Asignar tarea</div>
@@ -227,7 +223,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
           </div>
         )}
 
-        {/* Alerta no realizada — solo Daniel */}
         {isSupervisor && task.status === "no-realizada" && task.rejectionReason && (
           <div style={{ background: "#FFF0F0", border: "1.5px solid #E05555", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>⚠ Tarea no realizada — requiere atención</div>
@@ -247,7 +242,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
         {task.notes && <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16, fontSize: 13 }}>{task.notes}</div>}
         {task.photo && <img src={task.photo} alt="comprobante" style={{ width: "100%", borderRadius: 12, marginBottom: 16 }} />}
 
-        {/* Acciones — solo operario asignado o Daniel */}
         {canEdit && task.assignedTo && (
           <div style={{ borderTop: "1px solid #EEE8DC", paddingTop: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", marginBottom: 12 }}>Actualizar estado</div>
@@ -295,7 +289,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
   );
 }
 
-// ─── MODAL NUEVA TAREA ────────────────────────────────────────────────────────
 function NewTaskModal({ onClose, onAdd, currentUser }) {
   const isHousekeeping = currentUser === "housekeeping";
   const [form, setForm] = useState({ title: "", sector: "Habitaciones", location: "", assignedTo: "alexis", priority: "media", notes: "" });
@@ -380,10 +373,8 @@ function NewTaskModal({ onClose, onAdd, currentUser }) {
   );
 }
 
-// ─── MÉTRICAS ─────────────────────────────────────────────────────────────────
 function MetricsView({ tasks }) {
   const workers = TEAM.filter(m => m.role === "mantenimiento");
-
   function getStats(memberId) {
     const mine = tasks.filter(t => t.assignedTo === memberId);
     const completadas = mine.filter(t => t.status === "completada");
@@ -400,7 +391,6 @@ function MetricsView({ tasks }) {
     }
     return { total: mine.length, completadas: completadas.length, noRealizadas: noRealizadas.length, enProceso: enProceso.length, pendientes: mine.length-completadas.length-enProceso.length-noRealizadas.length, avgResp: fmtMs(avgResp), avgExec: fmtMs(avgExec) };
   }
-
   return (
     <div>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#AAA", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Métricas del equipo</div>
@@ -444,7 +434,6 @@ function MetricsView({ tasks }) {
   );
 }
 
-// ─── VISTA SUPERVISOR ─────────────────────────────────────────────────────────
 function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
   const [filter, setFilter] = useState("all");
   const [tab, setTab] = useState("tareas");
@@ -479,15 +468,12 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
 
       {tab === "metricas" ? <MetricsView tasks={tasks} /> : (
         <div>
-          {/* Alerta no realizadas */}
           {noRealizadas.length > 0 && (
             <div onClick={() => setFilter(filter === "no-realizada" ? "all" : "no-realizada")} style={{ background: filter==="no-realizada" ? "#FFCCCC" : "#FFF0F0", border: "1.5px solid #E05555", borderRadius: 14, padding: "12px 16px", marginBottom: 12, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#E05555" }}>⚠ {noRealizadas.length} tarea{noRealizadas.length!==1?"s":""} no realizada{noRealizadas.length!==1?"s":""} — revisá los motivos</div>
               <div style={{ fontSize: 11, color: "#AAA", marginTop: 2 }}>{filter==="no-realizada" ? "Tocá para ver todas" : "Tocá para filtrar"}</div>
             </div>
           )}
-
-          {/* Alerta sin asignar */}
           {unassigned.length > 0 && (
             <div onClick={() => setFilter(filter === "unassigned" ? "all" : "unassigned")} style={{ background: filter==="unassigned" ? "#F0D9A8" : "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 14, padding: "12px 16px", marginBottom: 16, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#C8963E" }}>⏳ {unassigned.length} tarea{unassigned.length!==1?"s":""} sin asignar de Housekeeping</div>
@@ -534,7 +520,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
                     </div>
                     {task.photo && <img src={task.photo} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
                   </div>
-                  {task.rejectionReason && <div style={{ marginTop: 8, fontSize: 11, color: "#E05555", background: "#FFF0F0", borderRadius: 6, padding: "6px 10px", fontWeight: 500 }}>⚠ {task.rejectionReason}</div>}
+                  {task.rejectionReason && <div style={{ marginTop: 8, fontSize: 11, color: "#E05555", background: "#FFF0F0", borderRadius: 6, padding: "6px 10px" }}>⚠ {task.rejectionReason}</div>}
                 </div>
               );
             })}
@@ -543,14 +529,12 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
           <button onClick={onNewTask} style={{ position: "fixed", bottom: 28, right: 24, width: 56, height: 56, borderRadius: "50%", background: "#C8963E", border: "none", color: "#fff", fontSize: 28, cursor: "pointer", boxShadow: "0 4px 16px rgba(200,150,62,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
         </div>
       )}
-
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} onDelete={id => { onTaskDelete(id); setSelectedTask(null); }} currentUser="daniel" />}
     </div>
   );
 }
 
-// ─── VISTA OPERARIO / HOUSEKEEPING ────────────────────────────────────────────
-function WorkerView({ tasks, memberId, onTaskUpdate }) {
+function WorkerView({ tasks, memberId, onTaskUpdate, onNewTask }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const isHousekeeping = memberId === "housekeeping";
   const myTasks = isHousekeeping ? tasks.filter(t => t.createdBy === "housekeeping") : tasks.filter(t => t.assignedTo === memberId);
@@ -599,12 +583,17 @@ function WorkerView({ tasks, memberId, onTaskUpdate }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{done.map(t => <TaskCard key={t.id} task={t} />)}</div>
       </div>}
       {myTasks.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: "#AAA" }}><div style={{ fontSize: 40 }}>✓</div><div style={{ marginTop: 8, fontWeight: 600 }}>{isHousekeeping ? "Sin problemas reportados" : "Sin tareas asignadas"}</div></div>}
+
+      {/* Botón + solo para Housekeeping */}
+      {isHousekeeping && (
+        <button onClick={onNewTask} style={{ position: "fixed", bottom: 28, right: 24, width: 56, height: 56, borderRadius: "50%", background: member.color, border: "none", color: "#fff", fontSize: 28, cursor: "pointer", boxShadow: `0 4px 16px ${member.color}66`, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+      )}
+
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} onDelete={() => {}} currentUser={memberId} />}
     </div>
   );
 }
 
-// ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -621,8 +610,6 @@ export default function App() {
   function handleTaskUpdate(updated) { setTasks(ts => ts.map(t => t.id === updated.id ? updated : t)); }
   function handleNewTask(task) { setTasks(ts => [...ts, task]); }
   function handleTaskDelete(id) { setTasks(ts => ts.filter(t => t.id !== id)); }
-
-  const canCreateTask = currentUser === "daniel" || currentUser === "housekeeping";
 
   if (!currentUser) {
     return (
@@ -650,7 +637,7 @@ export default function App() {
         <div>
           <div style={{ fontSize: 10, color: "#C8963E", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>La Posta del Pilar</div>
           <div style={{ fontSize: 18, fontWeight: 800, color: "#FDFAF5" }}>
-            {currentUser === "daniel" ? "Panel Supervisor" : "Mis Tareas"}
+            {currentUser === "daniel" ? "Panel Supervisor" : currentUser === "housekeeping" ? "Housekeeping" : "Mis Tareas"}
           </div>
         </div>
         <button onClick={() => setCurrentUser(null)} style={{ background: "transparent", border: "1px solid #3A3020", borderRadius: 20, padding: "6px 14px", color: "#888", fontSize: 12, cursor: "pointer" }}>Salir</button>
@@ -664,11 +651,13 @@ export default function App() {
         <div style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
           {currentUser === "daniel"
             ? <SupervisorView tasks={tasks} onTaskUpdate={handleTaskUpdate} onTaskDelete={handleTaskDelete} onNewTask={() => setShowNewTask(true)} />
-            : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} />
+            : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} onNewTask={() => setShowNewTask(true)} />
           }
         </div>
       )}
-      {showNewTask && canCreateTask && <NewTaskModal onClose={() => setShowNewTask(false)} onAdd={handleNewTask} currentUser={currentUser} />}
+      {showNewTask && (currentUser === "daniel" || currentUser === "housekeeping") && (
+        <NewTaskModal onClose={() => setShowNewTask(false)} onAdd={handleNewTask} currentUser={currentUser} />
+      )}
     </div>
   );
 }
