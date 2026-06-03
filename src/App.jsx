@@ -129,13 +129,12 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
   const [fotoPreview, setFotoPreview] = useState(task.photo || null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [escalating, setEscalating] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [assignTo, setAssignTo] = useState(task.assignedTo || "alexis");
   const fileRef = useRef();
 
   const isSupervisor = currentUser === "daniel";
-  const isWorker = TEAM.find(m => m.id === currentUser)?.role === "mantenimiento";
+  const isWorker = getMember(currentUser)?.role === "mantenimiento";
   const canEdit = currentUser === task.assignedTo || isSupervisor;
   const member = getMember(task.assignedTo);
   const workers = TEAM.filter(m => m.role === "mantenimiento");
@@ -175,16 +174,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
     } catch(e) { alert("Error al eliminar: " + e.message); } finally { setDeleting(false); }
   }
 
-  async function handleEscalate() {
-    if (!confirm("¿Elevar esta tarea a Daniel?")) return;
-    setEscalating(true);
-    try {
-      const updated = { ...task, escalated: true, assignedTo: "daniel" };
-      await sbFetch("PATCH", `tasks?id=eq.${task.id}`, taskToDb(updated));
-      onUpdate(updated); onClose();
-    } catch(e) { alert("Error: " + e.message); } finally { setEscalating(false); }
-  }
-
   async function handleAssign() {
     setAssigning(true);
     try {
@@ -207,7 +196,6 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase" }}>{task.sector} · {task.location}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 8px" }}>#{task.id}</span>
-              {task.escalated && <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 8px" }}>↑ Elevada</span>}
               {!task.assignedTo && <span style={{ fontSize: 10, fontWeight: 700, color: "#888", background: "#F0EDE8", borderRadius: 20, padding: "1px 8px" }}>Sin asignar</span>}
             </div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{task.title}</div>
@@ -224,7 +212,7 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
           </div>
         )}
 
-        {/* Asignar — solo Daniel cuando no tiene asignado */}
+        {/* Panel asignación — solo Daniel cuando no tiene asignado */}
         {isSupervisor && !task.assignedTo && (
           <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#C8963E", marginBottom: 10 }}>Asignar tarea</div>
@@ -239,6 +227,14 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
           </div>
         )}
 
+        {/* Alerta no realizada — solo Daniel */}
+        {isSupervisor && task.status === "no-realizada" && task.rejectionReason && (
+          <div style={{ background: "#FFF0F0", border: "1.5px solid #E05555", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>⚠ Tarea no realizada — requiere atención</div>
+            <div style={{ fontSize: 13, color: "#C0392B" }}>{task.rejectionReason}</div>
+          </div>
+        )}
+
         {(task.startedAt || task.finishedAt) && (
           <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
             {respTime && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>⏱ Tiempo de respuesta: <strong>{respTime}</strong></div>}
@@ -250,8 +246,8 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
 
         {task.notes && <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16, fontSize: 13 }}>{task.notes}</div>}
         {task.photo && <img src={task.photo} alt="comprobante" style={{ width: "100%", borderRadius: 12, marginBottom: 16 }} />}
-        {task.rejectionReason && <div style={{ background: "#FFF0F0", border: "1px solid #FFCCCC", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#C0392B", marginBottom: 16 }}><strong>Motivo:</strong> {task.rejectionReason}</div>}
 
+        {/* Acciones — solo operario asignado o Daniel */}
         {canEdit && task.assignedTo && (
           <div style={{ borderTop: "1px solid #EEE8DC", paddingTop: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", marginBottom: 12 }}>Actualizar estado</div>
@@ -264,26 +260,26 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
             </div>
             {status === "en-proceso" && !task.startedAt && <div style={{ background: "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#C8963E" }}>🕐 Al guardar se registrará la hora de inicio</div>}
             {status === "completada" && <div style={{ background: "#F0F7EC", border: "1px solid #C8E0B4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7B9E5E" }}>🏁 Al guardar se registrará la hora de finalización</div>}
-            {status === "no-realizada" && <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>¿Por qué no se realizó? *</div>
-              <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Falta material..." style={{ width: "100%", minHeight: 80, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", resize: "none", boxSizing: "border-box" }} />
-            </div>}
-            {status === "completada" && <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#7B9E5E", marginBottom: 6 }}>Foto comprobante *</div>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
-              {fotoPreview
-                ? <div style={{ position: "relative" }}><img src={fotoPreview} alt="foto" style={{ width: "100%", borderRadius: 12, maxHeight: 200, objectFit: "cover" }} /><button onClick={() => fileRef.current.click()} style={{ position: "absolute", bottom: 8, right: 8, background: "#1A1208", color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>Cambiar</button></div>
-                : <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "14px", border: "2px dashed #CCC", borderRadius: 12, background: "#FAFAFA", color: "#AAA", fontSize: 14, cursor: "pointer" }}>📷 Tocar para sacar foto</button>
-              }
-            </div>}
+            {status === "no-realizada" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#E05555", marginBottom: 6 }}>¿Por qué no se realizó? *</div>
+                <div style={{ fontSize: 11, color: "#AAA", marginBottom: 8 }}>Daniel recibirá una alerta con este motivo.</div>
+                <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Falta material, esperando repuesto..." style={{ width: "100%", minHeight: 80, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", resize: "none", boxSizing: "border-box" }} />
+              </div>
+            )}
+            {status === "completada" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#7B9E5E", marginBottom: 6 }}>Foto comprobante *</div>
+                <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
+                {fotoPreview
+                  ? <div style={{ position: "relative" }}><img src={fotoPreview} alt="foto" style={{ width: "100%", borderRadius: 12, maxHeight: 200, objectFit: "cover" }} /><button onClick={() => fileRef.current.click()} style={{ position: "absolute", bottom: 8, right: 8, background: "#1A1208", color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>Cambiar</button></div>
+                  : <button onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "14px", border: "2px dashed #CCC", borderRadius: 12, background: "#FAFAFA", color: "#AAA", fontSize: 14, cursor: "pointer" }}>📷 Tocar para sacar foto</button>
+                }
+              </div>
+            )}
             <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "14px", background: saving ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
-            {isWorker && !task.escalated && (
-              <button onClick={handleEscalate} disabled={escalating} style={{ width: "100%", padding: "12px", background: "transparent", color: "#C8963E", border: "1.5px solid #C8963E", borderRadius: 12, fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 10 }}>
-                {escalating ? "Elevando..." : "↑ Elevar problema a Daniel"}
-              </button>
-            )}
           </div>
         )}
 
@@ -326,8 +322,7 @@ function NewTaskModal({ onClose, onAdd, currentUser }) {
         assignedTo: isHousekeeping ? null : form.assignedTo,
         status: "pendiente",
         week: new Date().toISOString().slice(0, 10),
-        photo: null,
-        rejectionReason: null,
+        photo: null, rejectionReason: null,
         createdAt: new Date().toISOString().slice(0, 10),
         startedAt: null, finishedAt: null,
         escalated: false, createdBy: currentUser
@@ -367,8 +362,6 @@ function NewTaskModal({ onClose, onAdd, currentUser }) {
           )}
           {isHousekeeping && <div><label style={lbl}>Prioridad</label><select value={form.priority} onChange={e => set("priority", e.target.value)} style={inp}><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></div>}
           <div><label style={lbl}>Notas</label><textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Describí el problema..." style={{ ...inp, minHeight: 70, resize: "none" }} /></div>
-
-          {/* Foto del problema */}
           <div>
             <label style={lbl}>Foto {isHousekeeping ? "del problema" : "(opcional)"}</label>
             <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: "none" }} />
@@ -458,18 +451,20 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
   const [selectedTask, setSelectedTask] = useState(null);
 
   const unassigned = tasks.filter(t => !t.assignedTo);
+  const noRealizadas = tasks.filter(t => t.status === "no-realizada" && t.rejectionReason);
 
   const filtered = (() => {
     if (filter === "unassigned") return tasks.filter(t => !t.assignedTo);
+    if (filter === "no-realizada") return tasks.filter(t => t.status === "no-realizada");
     if (filter === "all") return tasks;
-    return tasks.filter(t => t.assignedTo === filter || t.status === filter);
+    return tasks.filter(t => t.assignedTo === filter);
   })();
 
   const stats = {
     total: tasks.length,
     completadas: tasks.filter(t => t.status === "completada").length,
     pendientes: tasks.filter(t => t.status === "pendiente").length,
-    noRealizadas: tasks.filter(t => t.status === "no-realizada").length,
+    noRealizadasCount: tasks.filter(t => t.status === "no-realizada").length,
   };
 
   return (
@@ -484,6 +479,15 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
 
       {tab === "metricas" ? <MetricsView tasks={tasks} /> : (
         <div>
+          {/* Alerta no realizadas */}
+          {noRealizadas.length > 0 && (
+            <div onClick={() => setFilter(filter === "no-realizada" ? "all" : "no-realizada")} style={{ background: filter==="no-realizada" ? "#FFCCCC" : "#FFF0F0", border: "1.5px solid #E05555", borderRadius: 14, padding: "12px 16px", marginBottom: 12, cursor: "pointer" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#E05555" }}>⚠ {noRealizadas.length} tarea{noRealizadas.length!==1?"s":""} no realizada{noRealizadas.length!==1?"s":""} — revisá los motivos</div>
+              <div style={{ fontSize: 11, color: "#AAA", marginTop: 2 }}>{filter==="no-realizada" ? "Tocá para ver todas" : "Tocá para filtrar"}</div>
+            </div>
+          )}
+
+          {/* Alerta sin asignar */}
           {unassigned.length > 0 && (
             <div onClick={() => setFilter(filter === "unassigned" ? "all" : "unassigned")} style={{ background: filter==="unassigned" ? "#F0D9A8" : "#FFF8ED", border: "1px solid #F0D9A8", borderRadius: 14, padding: "12px 16px", marginBottom: 16, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#C8963E" }}>⏳ {unassigned.length} tarea{unassigned.length!==1?"s":""} sin asignar de Housekeeping</div>
@@ -492,7 +496,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 20 }}>
-            {[{label:"Total",value:stats.total,color:"#1A1208"},{label:"Listas",value:stats.completadas,color:"#7B9E5E"},{label:"Pend.",value:stats.pendientes,color:"#C8963E"},{label:"No real.",value:stats.noRealizadas,color:"#E05555"}].map(s => (
+            {[{label:"Total",value:stats.total,color:"#1A1208"},{label:"Listas",value:stats.completadas,color:"#7B9E5E"},{label:"Pend.",value:stats.pendientes,color:"#C8963E"},{label:"No real.",value:stats.noRealizadasCount,color:"#E05555"}].map(s => (
               <div key={s.label} style={{ background: "#fff", borderRadius: 12, padding: "12px 8px", textAlign: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
                 <div style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>{s.label}</div>
@@ -501,7 +505,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 16 }}>
-            {[{id:"all",label:"Todos"},...TEAM.filter(m=>m.role==="mantenimiento").map(m=>({id:m.id,label:m.name})),{id:"no-realizada",label:"⚠ Sin hacer"}].map(f => (
+            {[{id:"all",label:"Todos"},...TEAM.filter(m=>m.role==="mantenimiento").map(m=>({id:m.id,label:m.name}))].map(f => (
               <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, border: "1.5px solid", borderColor: filter===f.id ? "#1A1208" : "#E0D8CC", background: filter===f.id ? "#1A1208" : "#fff", color: filter===f.id ? "#fff" : "#666", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>{f.label}</button>
             ))}
           </div>
@@ -510,13 +514,12 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
             {filtered.map(task => {
               const member = getMember(task.assignedTo); const st = STATUS_CONFIG[task.status];
               return (
-                <div key={task.id} onClick={() => setSelectedTask(task)} style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", cursor: "pointer", borderLeft: `4px solid ${PRIORITY_CONFIG[task.priority]?.color||"#ccc"}` }}>
+                <div key={task.id} onClick={() => setSelectedTask(task)} style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", cursor: "pointer", borderLeft: `4px solid ${task.status==="no-realizada" ? "#E05555" : PRIORITY_CONFIG[task.priority]?.color||"#ccc"}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 11, color: "#AAA" }}>{task.sector} · {task.location}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 6px" }}>#{task.id}</span>
-                        {task.escalated && <span style={{ fontSize: 10, fontWeight: 700, color: "#C8963E", background: "#FFF3DC", borderRadius: 20, padding: "1px 6px" }}>↑ Elevada</span>}
                         {!task.assignedTo && <span style={{ fontSize: 10, fontWeight: 700, color: "#888", background: "#F0EDE8", borderRadius: 20, padding: "1px 6px" }}>Sin asignar</span>}
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1208", marginBottom: 8 }}>{task.title}</div>
@@ -531,7 +534,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
                     </div>
                     {task.photo && <img src={task.photo} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
                   </div>
-                  {task.rejectionReason && <div style={{ marginTop: 8, fontSize: 11, color: "#E05555", background: "#FFF0F0", borderRadius: 6, padding: "4px 8px" }}>⚠ {task.rejectionReason.slice(0,60)}...</div>}
+                  {task.rejectionReason && <div style={{ marginTop: 8, fontSize: 11, color: "#E05555", background: "#FFF0F0", borderRadius: 6, padding: "6px 10px", fontWeight: 500 }}>⚠ {task.rejectionReason}</div>}
                 </div>
               );
             })}
@@ -547,7 +550,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
 }
 
 // ─── VISTA OPERARIO / HOUSEKEEPING ────────────────────────────────────────────
-function WorkerView({ tasks, memberId, onTaskUpdate, onNewTask }) {
+function WorkerView({ tasks, memberId, onTaskUpdate }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const isHousekeeping = memberId === "housekeeping";
   const myTasks = isHousekeeping ? tasks.filter(t => t.createdBy === "housekeeping") : tasks.filter(t => t.assignedTo === memberId);
@@ -596,7 +599,6 @@ function WorkerView({ tasks, memberId, onTaskUpdate, onNewTask }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{done.map(t => <TaskCard key={t.id} task={t} />)}</div>
       </div>}
       {myTasks.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: "#AAA" }}><div style={{ fontSize: 40 }}>✓</div><div style={{ marginTop: 8, fontWeight: 600 }}>{isHousekeeping ? "Sin problemas reportados" : "Sin tareas asignadas"}</div></div>}
-      <button onClick={onNewTask} style={{ position: "fixed", bottom: 28, right: 24, width: 56, height: 56, borderRadius: "50%", background: member.color, border: "none", color: "#fff", fontSize: 28, cursor: "pointer", boxShadow: `0 4px 16px ${member.color}66`, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} onUpdate={updated => { onTaskUpdate(updated); setSelectedTask(null); }} onDelete={() => {}} currentUser={memberId} />}
     </div>
   );
@@ -619,6 +621,8 @@ export default function App() {
   function handleTaskUpdate(updated) { setTasks(ts => ts.map(t => t.id === updated.id ? updated : t)); }
   function handleNewTask(task) { setTasks(ts => [...ts, task]); }
   function handleTaskDelete(id) { setTasks(ts => ts.filter(t => t.id !== id)); }
+
+  const canCreateTask = currentUser === "daniel" || currentUser === "housekeeping";
 
   if (!currentUser) {
     return (
@@ -660,11 +664,11 @@ export default function App() {
         <div style={{ padding: "20px 16px 100px", maxWidth: 480, margin: "0 auto" }}>
           {currentUser === "daniel"
             ? <SupervisorView tasks={tasks} onTaskUpdate={handleTaskUpdate} onTaskDelete={handleTaskDelete} onNewTask={() => setShowNewTask(true)} />
-            : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} onNewTask={() => setShowNewTask(true)} />
+            : <WorkerView tasks={tasks} memberId={currentUser} onTaskUpdate={handleTaskUpdate} />
           }
         </div>
       )}
-      {showNewTask && <NewTaskModal onClose={() => setShowNewTask(false)} onAdd={handleNewTask} currentUser={currentUser} />}
+      {showNewTask && canCreateTask && <NewTaskModal onClose={() => setShowNewTask(false)} onAdd={handleNewTask} currentUser={currentUser} />}
     </div>
   );
 }
