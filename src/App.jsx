@@ -50,6 +50,8 @@ const TEAM = [
   { id: "housekeeping", name: "Housekeeping", role: "housekeeping", color: "#E07B6A", initials: "HK" },
 ];
 
+const ASSIGNABLE = TEAM.filter(m => m.role === "mantenimiento" || m.id === "daniel");
+
 const SECTORS = ["Habitaciones", "SPA", "Exterior / Piletas", "Restaurante", "Recepción", "Cocina", "Administración", "Pasillos", "Aldaba", "General"];
 const PRIORITY_CONFIG = { alta: { label: "Alta", color: "#E05555", bg: "#FFF0F0" }, media: { label: "Media", color: "#C8963E", bg: "#FFF8ED" }, baja: { label: "Baja", color: "#7B9E5E", bg: "#F0F7EC" } };
 const STATUS_CONFIG = { pendiente: { label: "Pendiente", icon: "○", color: "#888" }, "en-proceso": { label: "En proceso", icon: "◐", color: "#C8963E" }, completada: { label: "Completada", icon: "●", color: "#7B9E5E" }, "no-realizada": { label: "No realizada", icon: "✕", color: "#E05555" } };
@@ -132,10 +134,8 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
   const fileRef = useRef();
 
   const isSupervisor = currentUser === "daniel";
-  const isWorker = getMember(currentUser)?.role === "mantenimiento";
   const canEdit = currentUser === task.assignedTo || isSupervisor;
   const member = getMember(task.assignedTo);
-  const workers = TEAM.filter(m => m.role === "mantenimiento");
 
   function handleFotoChange(e) {
     const file = e.target.files[0];
@@ -214,10 +214,25 @@ function TaskModal({ task, onClose, onUpdate, onDelete, currentUser }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: "#C8963E", marginBottom: 10 }}>Asignar tarea</div>
             <div style={{ display: "flex", gap: 8 }}>
               <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={{ flex: 1, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "8px 12px", fontSize: 14, fontFamily: "inherit", background: "#FDFAF5" }}>
-                {workers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {ASSIGNABLE.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
               <button onClick={handleAssign} disabled={assigning} style={{ padding: "8px 16px", background: "#1A1208", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                 {assigning ? "..." : "Asignar"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Reasignar — solo Daniel, si ya tiene asignado */}
+        {isSupervisor && task.assignedTo && (
+          <div style={{ background: "#F5F0E8", borderRadius: 12, padding: "12px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", marginBottom: 8 }}>Reasignar a</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={{ flex: 1, border: "1.5px solid #E0D8CC", borderRadius: 10, padding: "8px 12px", fontSize: 14, fontFamily: "inherit", background: "#FDFAF5" }}>
+                {ASSIGNABLE.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <button onClick={handleAssign} disabled={assigning || assignTo === task.assignedTo} style={{ padding: "8px 16px", background: assignTo === task.assignedTo ? "#CCC" : "#1A1208", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: assignTo === task.assignedTo ? "default" : "pointer" }}>
+                {assigning ? "..." : "Cambiar"}
               </button>
             </div>
           </div>
@@ -297,7 +312,6 @@ function NewTaskModal({ onClose, onAdd, currentUser }) {
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const workers = TEAM.filter(m => m.role === "mantenimiento");
 
   function handleFotoChange(e) {
     const file = e.target.files[0];
@@ -349,7 +363,7 @@ function NewTaskModal({ onClose, onAdd, currentUser }) {
           </div>
           {!isHousekeeping && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div><label style={lbl}>Asignar a</label><select value={form.assignedTo} onChange={e => set("assignedTo", e.target.value)} style={inp}>{workers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+              <div><label style={lbl}>Asignar a</label><select value={form.assignedTo} onChange={e => set("assignedTo", e.target.value)} style={inp}>{ASSIGNABLE.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
               <div><label style={lbl}>Prioridad</label><select value={form.priority} onChange={e => set("priority", e.target.value)} style={inp}><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></div>
             </div>
           )}
@@ -491,7 +505,7 @@ function SupervisorView({ tasks, onTaskUpdate, onTaskDelete, onNewTask }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 16 }}>
-            {[{id:"all",label:"Todos"},...TEAM.filter(m=>m.role==="mantenimiento").map(m=>({id:m.id,label:m.name}))].map(f => (
+            {[{id:"all",label:"Todos"},...TEAM.filter(m=>m.role==="mantenimiento").map(m=>({id:m.id,label:m.name})),{id:"daniel",label:"Daniel"}].map(f => (
               <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, border: "1.5px solid", borderColor: filter===f.id ? "#1A1208" : "#E0D8CC", background: filter===f.id ? "#1A1208" : "#fff", color: filter===f.id ? "#fff" : "#666", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>{f.label}</button>
             ))}
           </div>
@@ -584,7 +598,6 @@ function WorkerView({ tasks, memberId, onTaskUpdate, onNewTask }) {
       </div>}
       {myTasks.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: "#AAA" }}><div style={{ fontSize: 40 }}>✓</div><div style={{ marginTop: 8, fontWeight: 600 }}>{isHousekeeping ? "Sin problemas reportados" : "Sin tareas asignadas"}</div></div>}
 
-      {/* Botón + solo para Housekeeping */}
       {isHousekeeping && (
         <button onClick={onNewTask} style={{ position: "fixed", bottom: 28, right: 24, width: 56, height: 56, borderRadius: "50%", background: member.color, border: "none", color: "#fff", fontSize: 28, cursor: "pointer", boxShadow: `0 4px 16px ${member.color}66`, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
       )}
